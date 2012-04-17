@@ -33,6 +33,8 @@
 #include <sys/socket.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <string.h>
 #ifndef __NetBSD__
 #include <linux/if.h>
 #include <linux/if_tun.h>
@@ -53,8 +55,8 @@ int main(int argc, char **argv)
 	struct ifreq ifr;
 #endif
 
-	if(argc<=3) {
-		fprintf(stderr,"usage: udptap <tapdevice> <remotehost> <remoteport>\n");
+	if(argc<=5) {
+		fprintf(stderr,"usage: udptap <tapdevice> <localip> <localport> <remotehost> <remoteport>\n");
 		exit(1);
 	}
 
@@ -80,19 +82,20 @@ int main(int argc, char **argv)
 
 	addr.sin_family=AF_INET;
 	addr.sin_port=htons(atoi(argv[3]));
-	memset(&addr.sin_addr,0,sizeof(addr.sin_addr));
+    inet_aton(argv[2],&addr.sin_addr);
 
 	if(bind(sock,(struct sockaddr *)&addr,slen)) {
 		fprintf(stderr,"bind() to port %d failed: %s\n",atoi(argv[3]),strerror(errno));
 		exit(5);
 	}
 
-	if(!inet_aton(argv[2],&addr.sin_addr)) {
+	addr.sin_port=htons(atoi(argv[5]));
+	if(!inet_aton(argv[4],&addr.sin_addr)) {
 		struct hostent *host;
-		host=gethostbyname2(argv[2],AF_INET);
+		host=gethostbyname2(argv[4],AF_INET);
 		if(host==NULL) {
 			fprintf(stderr,"gethostbyname(%s) failed: %s\n",
-				argv[2],hstrerror(h_errno));
+				argv[4],hstrerror(h_errno));
 			exit(6);
 		}
 		memcpy(&addr.sin_addr,host->h_addr,sizeof(struct in_addr));
