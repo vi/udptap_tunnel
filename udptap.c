@@ -1,6 +1,8 @@
 /* udptap - multiplex packets between a tap device and a udp socket
 
    Copyright (c) 2003, Hans Rosenfeld
+   Added mcrypt encryption - Vitaly "_Vi" Shukela; 2012
+     Note: mcrypt is GPLv3+
 
    Permission is hereby granted, free of charge, to any person obtaining a
    copy of this software and associated documentation files (the "Software"),
