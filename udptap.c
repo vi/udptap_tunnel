@@ -63,7 +63,8 @@ int main(int argc, char **argv)
     char *block_buffer;
     int blocksize=0;
     int keysize = 32; /* 256 bits == 32 bytes */
-
+    char enc_state[1024];
+    int enc_state_size;
 
     if(getenv("MCRYPT_KEYFILE")) {
         if (getenv("MCRYPT_KEYSIZE")) { keysize=atoi(getenv("MCRYPT_KEYSIZE"))/8; }
@@ -75,7 +76,7 @@ int main(int argc, char **argv)
         fclose(keyf);
 
         char* algo="twofish";
-        char* mode="ecb";
+        char* mode="cbc";
 
         if (getenv("MCRYPT_ALGO")) { algo = getenv("MCRYPT_ALGO"); }
         if (getenv("MCRYPT_MODE")) { mode = getenv("MCRYPT_MODE"); }
@@ -90,6 +91,9 @@ int main(int argc, char **argv)
         //block_buffer = malloc(blocksize);
 
         mcrypt_generic_init( td, key, keysize, NULL);
+
+        enc_state_size = sizeof enc_state;
+        mcrypt_enc_get_state(td, enc_state, &enc_state_size);
     }
 
 	if(argc<=5) {
@@ -147,6 +151,7 @@ int main(int argc, char **argv)
             if (blocksize) {
                 cnt = ((cnt-1)/blocksize+1)*blocksize; // pad to block size
                 mcrypt_generic (td, buf, cnt);
+                mcrypt_enc_set_state (td, enc_state, enc_state_size);
             }
 			sendto(sock,&buf,cnt,0,(struct sockaddr *)&addr,slen);
 		}
@@ -158,6 +163,7 @@ int main(int argc, char **argv)
                 if (blocksize) {
                     cnt = ((cnt-1)/blocksize+1)*blocksize; // pad to block size
                     mdecrypt_generic (td, buf, cnt);
+                    mcrypt_enc_set_state (td, enc_state, enc_state_size);
                 }
 				write(dev,(void*)&buf,cnt);
             }
