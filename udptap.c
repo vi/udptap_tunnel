@@ -65,6 +65,11 @@ int main(int argc, char **argv)
     int keysize = 32; /* 256 bits == 32 bytes */
     char enc_state[1024];
     int enc_state_size;
+    char* tun_device = "/dev/net/tun";
+    char* dev_name="tun%d";
+
+    if(getenv("TUN_DEVICE")) { tun_device = getenv("TUN_DEVICE"); }
+    if(getenv("DEV_NAME")) { dev_name = getenv("DEV_NAME"); }
 
     if(getenv("MCRYPT_KEYFILE")) {
         if (getenv("MCRYPT_KEYSIZE")) { keysize=atoi(getenv("MCRYPT_KEYSIZE"))/8; }
@@ -96,22 +101,32 @@ int main(int argc, char **argv)
         mcrypt_enc_get_state(td, enc_state, &enc_state_size);
     }
 
-	if(argc<=5) {
-		fprintf(stderr,"usage: udptap <tapdevice> <localip> <localport> <remotehost> <remoteport>\n");
+	if(argc<=4) {
+		fprintf(stderr,
+                "Usage: udptap_tunnel <localip> <localport> <remotehost> <remoteport>\n"
+                "    Environment variables:\n"
+                "    TUN_DEVICE  /dev/net/tun\n"
+                "    DEV_NAME    name of the device, default tun%d\n"
+                "    \n"
+                "    MCRYPT_KEYFILE  -- turn on encryption, read key from this file\n"
+                "    MCRYPT_KEYSIZE  -- key size in bits, default 256\n"
+                "    MCRYPT_ALGO     -- algorithm, default is twofish. aes256 is called rijndael-256\n"
+                "    MCRYPT_MODE     -- mode, default is CBC\n"
+                );
 		exit(1);
 	}
 
     
 
-	if((dev = open(argv[1], O_RDWR)) < 0) {
-		fprintf(stderr,"open(%s) failed: %s\n", argv[1], strerror(errno));
+	if((dev = open(tun_device, O_RDWR)) < 0) {
+		fprintf(stderr,"open(%s) failed: %s\n", tun_device, strerror(errno));
 		exit(2);
 	}
 
 #ifndef __NetBSD__
 	memset(&ifr, 0, sizeof(ifr));
 	ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
-	strncpy(ifr.ifr_name, "tun%d", IFNAMSIZ);
+	strncpy(ifr.ifr_name, dev_name, IFNAMSIZ);
 	if(ioctl(dev, TUNSETIFF, (void*) &ifr) < 0) {
 		perror("ioctl(TUNSETIFF) failed");
 		exit(3);
@@ -124,21 +139,21 @@ int main(int argc, char **argv)
 	}
 
 	addr.sin_family=AF_INET;
-	addr.sin_port=htons(atoi(argv[3]));
-    inet_aton(argv[2],&addr.sin_addr);
+	addr.sin_port=htons(atoi(argv[2]));
+    inet_aton(argv[1],&addr.sin_addr);
 
 	if(bind(sock,(struct sockaddr *)&addr,slen)) {
-		fprintf(stderr,"bind() to port %d failed: %s\n",atoi(argv[3]),strerror(errno));
+		fprintf(stderr,"bind() to port %d failed: %s\n",atoi(argv[2]),strerror(errno));
 		exit(5);
 	}
 
-	addr.sin_port=htons(atoi(argv[5]));
-	if(!inet_aton(argv[4],&addr.sin_addr)) {
+	addr.sin_port=htons(atoi(argv[4]));
+	if(!inet_aton(argv[3],&addr.sin_addr)) {
 		struct hostent *host;
-		host=gethostbyname2(argv[4],AF_INET);
+		host=gethostbyname2(argv[3],AF_INET);
 		if(host==NULL) {
 			fprintf(stderr,"gethostbyname(%s) failed: %s\n",
-				argv[4],hstrerror(h_errno));
+				argv[3],hstrerror(h_errno));
 			exit(6);
 		}
 		memcpy(&addr.sin_addr,host->h_addr,sizeof(struct in_addr));
@@ -157,7 +172,7 @@ int main(int argc, char **argv)
 		}
 	else
 		while(1) {
-			cnt=recvfrom(sock,&buf,1518,0,(struct sockaddr *)&from,&slen);
+			cnt=recvfrom(sock,&buf,1536,0,(struct sockaddr *)&from,&slen);
 			if((from.sin_addr.s_addr==addr.sin_addr.s_addr) &&
 			   (from.sin_port==addr.sin_port)) {
                 if (blocksize) {
