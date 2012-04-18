@@ -1,0 +1,18 @@
+udptap - create TAP device that sends/receives UDP packets to/from configured host.
+Supports encryption using mcrypt.
+
+Usage: udptap_tunnel <localip> <localport> <remotehost> <remoteport>
+    Environment variables:
+    TUN_DEVICE  /dev/net/tun
+    DEV_NAME    name of the device, default tun0
+    
+    MCRYPT_KEYFILE  -- turn on encryption, read key from this file
+    MCRYPT_KEYSIZE  -- key size in bits, default 256
+    MCRYPT_ALGO     -- algorithm, default is twofish. aes256 is rijndael-256
+    MCRYPT_MODE     -- mode, default is CBC
+
+
+Note that each packet is encrypted separately and there is no filtering of invalid packets. Replay-based attacks will work.
+Transferring some file using this tunnel's encryption feature is less secure than encrypting the file and then transferring it.
+
+The project is named "udptap_tunnel" because of there is already other udptap on Github.
