@@ -46,19 +46,58 @@
 #include <stdio.h>
 #include <errno.h>
 
+#include <mcrypt.h>
+
 int main(int argc, char **argv)
 {
 	int dev,cnt,sock,slen=sizeof(struct sockaddr_in);
-	unsigned char buf[1518];
+	unsigned char buf[1536];
 	struct sockaddr_in addr,from;
 #ifndef __NetBSD__
 	struct ifreq ifr;
 #endif
 
+    MCRYPT td;
+    int i;
+    char *key; 
+    char *block_buffer;
+    int blocksize=0;
+    int keysize = 32; /* 256 bits == 32 bytes */
+
+
+    if(getenv("MCRYPT_KEYFILE")) {
+        if (getenv("MCRYPT_KEYSIZE")) { keysize=atoi(getenv("MCRYPT_KEYSIZE"))/8; }
+        key = calloc(1, keysize);
+        FILE* keyf = fopen(getenv("MCRYPT_KEYFILE"), "r");
+        if (!keyf) { perror("fopen keyfile"); return 10; }
+        memset(key, 0, keysize);
+        fread(key, 1, keysize, keyf);
+        fclose(keyf);
+
+        char* algo="twofish";
+        char* mode="ecb";
+
+        if (getenv("MCRYPT_ALGO")) { algo = getenv("MCRYPT_ALGO"); }
+        if (getenv("MCRYPT_MODE")) { mode = getenv("MCRYPT_MODE"); }
+
+
+        td = mcrypt_module_open(algo, NULL, mode, NULL);
+        if (td==MCRYPT_FAILED) {
+            fprintf(stderr, "mcrypt_module_open failed algo=%s mode=%s keysize=%d\n", algo, mode, keysize);
+            return 11;
+        }
+        blocksize = mcrypt_enc_get_block_size(td);
+        //block_buffer = malloc(blocksize);
+
+        mcrypt_generic_init( td, key, keysize, NULL);
+    }
+
 	if(argc<=5) {
 		fprintf(stderr,"usage: udptap <tapdevice> <localip> <localport> <remotehost> <remoteport>\n");
 		exit(1);
 	}
+
+    
 
 	if((dev = open(argv[1], O_RDWR)) < 0) {
 		fprintf(stderr,"open(%s) failed: %s\n", argv[1], strerror(errno));
@@ -105,14 +144,27 @@ int main(int argc, char **argv)
 	if(fork())
 		while(1) {
 			cnt=read(dev,(void*)&buf,1518);
+            if (blocksize) {
+                cnt = ((cnt-1)/blocksize+1)*blocksize; // pad to block size
+                mcrypt_generic (td, buf, cnt);
+            }
 			sendto(sock,&buf,cnt,0,(struct sockaddr *)&addr,slen);
 		}
 	else
 		while(1) {
 			cnt=recvfrom(sock,&buf,1518,0,(struct sockaddr *)&from,&slen);
 			if((from.sin_addr.s_addr==addr.sin_addr.s_addr) &&
-			   (from.sin_port==addr.sin_port))
+			   (from.sin_port==addr.sin_port)) {
+                if (blocksize) {
+                    cnt = ((cnt-1)/blocksize+1)*blocksize; // pad to block size
+                    mdecrypt_generic (td, buf, cnt);
+                }
 				write(dev,(void*)&buf,cnt);
-					
+            }
 		}
+
+    if (blocksize) {
+        mcrypt_generic_deinit (td);
+        mcrypt_module_close(td);
+    }
 }
