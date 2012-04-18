@@ -118,7 +118,10 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-    
+    char* laddr = argv[1];
+    int lport = atoi(argv[2]);
+    char* rhost = argv[3];
+    int rport = atoi(argv[4]);
 
 	if((dev = open(tun_device, O_RDWR)) < 0) {
 		fprintf(stderr,"open(%s) failed: %s\n", tun_device, strerror(errno));
@@ -141,21 +144,21 @@ int main(int argc, char **argv)
 	}
 
 	addr.sin_family=AF_INET;
-	addr.sin_port=htons(atoi(argv[2]));
-    inet_aton(argv[1],&addr.sin_addr);
+	addr.sin_port=htons(lport);
+    inet_aton(laddr,&addr.sin_addr);
 
 	if(bind(sock,(struct sockaddr *)&addr,slen)) {
-		fprintf(stderr,"bind() to port %d failed: %s\n",atoi(argv[2]),strerror(errno));
+		fprintf(stderr,"bind() to port %d failed: %s\n",lport,strerror(errno));
 		exit(5);
 	}
 
-	addr.sin_port=htons(atoi(argv[4]));
-	if(!inet_aton(argv[3],&addr.sin_addr)) {
+	addr.sin_port=htons(rport);
+	if(!inet_aton(rhost,&addr.sin_addr)) {
 		struct hostent *host;
-		host=gethostbyname2(argv[3],AF_INET);
+		host=gethostbyname2(rhost,AF_INET);
 		if(host==NULL) {
 			fprintf(stderr,"gethostbyname(%s) failed: %s\n",
-				argv[3],hstrerror(h_errno));
+				rhost,hstrerror(h_errno));
 			exit(6);
 		}
 		memcpy(&addr.sin_addr,host->h_addr,sizeof(struct in_addr));
