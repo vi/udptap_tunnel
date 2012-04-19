@@ -108,7 +108,7 @@ int main(int argc, char **argv)
                 "Usage: udptap_tunnel <localip> <localport> <remotehost> <remoteport>\n"
                 "    Environment variables:\n"
                 "    TUN_DEVICE  /dev/net/tun\n"
-                "    DEV_NAME    name of the device, default tun%d\n"
+                "    DEV_NAME    name of the device, default tun%%d\n"
                 "    \n"
                 "    MCRYPT_KEYFILE  -- turn on encryption, read key from this file\n"
                 "    MCRYPT_KEYSIZE  -- key size in bits, default 256\n"
