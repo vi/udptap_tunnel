@@ -16,3 +16,5 @@ Note that each packet is encrypted separately and there is no filtering of inval
 Transferring some file using this tunnel's encryption feature is less secure than encrypting the file and then transferring it.
 
 The project is named "udptap_tunnel" because of there is already other udptap on Github.
+
+For a tool that does not use UDP sockets, but directly sends to Ethernet interface see https://github.com/vi/tap_mcrypt
