@@ -159,6 +159,7 @@ int main(int argc, char **argv)
 		fprintf(stderr,
                 "Usage: tap_mcrypt plaintext_interface destination_mac_address\n"
                 "Example: tap_mcrypt wlan0 ff:ff:ff:ff:ff:ff\n"
+                "                (note that ff:ff:ff:ff:ff:ff may work bad in Wi-Fi)\n"
                 "    Environment variables:\n"
                 "    TUN_DEVICE  /dev/net/tun\n"
                 "    DEV_NAME    name of the device, default tun%%d\n"

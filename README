@@ -4,6 +4,7 @@ It uses EtherType 0x08F4.
 
 Usage: tap_mcrypt plaintext_interface destination_mac_address
 Example: tap_mcrypt wlan0 ff:ff:ff:ff:ff:ff
+                (note that ff:ff:ff:ff:ff:ff may work bad in Wi-Fi)
     Environment variables:
     TUN_DEVICE  /dev/net/tun
     DEV_NAME    name of the device, default tun%d
