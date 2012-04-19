@@ -21,3 +21,5 @@ Note that each packet is encrypted separately and there is no filtering of inval
 Transferring some file using this tunnel's encryption feature is less secure than encrypting the file and then transferring it.
 
 For UDP version see https://github.com/vi/udptap_tunnel
+
+Networking with more than two peers (without locking to broadcast mode) is not implemented. Use https://github.com/vi/tap_mcrypt/issues/new if you want tap_mcrypt to have it.
