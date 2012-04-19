@@ -1,2 +1,2 @@
-udptap_tunnel: udptap.c
-		gcc -lmcrypt udptap.c -o udptap_tunnel
+tap_mcrpyt: tap_mcrypt.c
+		gcc -Wall -lmcrypt tap_mcrypt.c -o tap_mcrypt

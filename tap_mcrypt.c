@@ -1,7 +1,8 @@
-/* udptap - multiplex packets between a tap device and a udp socket
+/* tap_mcrypt - multiplex packets between a tap device and a ethernet interface,
+        encrypting everything with mcrypt
 
-   Copyright (c) 2003, Hans Rosenfeld
-   Added mcrypt encryption - Vitaly "_Vi" Shukela; 2012
+   Copyright (c) 2003, Hans Rosenfeld - udptap
+                 2012, Vitaly "_Vi" Shukela;
      Note: mcrypt is GPLv3+
 
    Permission is hereby granted, free of charge, to any person obtaining a
@@ -37,6 +38,11 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <sys/socket.h>
+#include <netpacket/packet.h>
+#include <net/ethernet.h> /* the L2 protocols */
+
 #ifndef __NetBSD__
 #include <linux/if.h>
 #include <linux/if_tun.h>
@@ -50,19 +56,65 @@
 
 #include <mcrypt.h>
 
+void printpacket(const char* msg, const unsigned char* p, size_t len) {
+    int i;
+    printf("%s len=%d ", msg, len);
+    for(i=0; i<len; ++i) {
+        printf("%02x", p[i]);
+    }
+    printf("\n");
+}
+
+int parseMac(char* mac, u_int8_t addr[])
+{
+    int i;
+    for (i = 0; i < 6; i++) {
+        long b = strtol(mac+(3*i), (char **) NULL, 16);
+        addr[i] = (char)b;
+    }
+    return 0;
+}
+
+
+void init_MAC_addr(int pf, char *interface, char *addr, int *card_index)
+{
+    struct ifreq card;
+
+    strcpy(card.ifr_name, interface);
+
+    if(!getenv("SOURCE_MAC_ADDRESS")) {
+        if (ioctl(pf, SIOCGIFHWADDR, &card) == -1) {
+            fprintf(stderr, "Could not get MAC address for %s\n", card.ifr_name);
+            perror("ioctl SIOCGIFHWADDR");
+            exit(1);
+        }
+
+        memcpy(addr, card.ifr_hwaddr.sa_data, 6);
+    } else {
+        parseMac(getenv("SOURCE_MAC_ADDRESS"), (unsigned char*)addr);
+    }
+
+    if (ioctl(pf, SIOCGIFINDEX, &card) == -1) {
+        fprintf(stderr, "Could not find device index number for %s\n", card.ifr_name);
+        perror("ioctl SIOCGIFINDEX"); 
+        exit(1);
+    }
+    *card_index = card.ifr_ifindex;
+}
+
+
 int main(int argc, char **argv)
 {
-	int dev,cnt,sock,slen=sizeof(struct sockaddr_in);
-	unsigned char buf[1536];
-	struct sockaddr_in addr,from;
+	int dev,cnt,sock;
+	unsigned char buf_frame[1536+sizeof(struct ether_header)];
+    unsigned char *buf = buf_frame+sizeof(struct ether_header);
+    struct ether_header *header = (struct ether_header*) buf_frame;
 #ifndef __NetBSD__
 	struct ifreq ifr;
 #endif
 
     MCRYPT td;
-    int i;
     char *key; 
-    char *block_buffer;
     int blocksize=0;
     int keysize = 32; /* 256 bits == 32 bytes */
     char enc_state[1024];
@@ -103,12 +155,14 @@ int main(int argc, char **argv)
         mcrypt_enc_get_state(td, enc_state, &enc_state_size);
     }
 
-	if(argc<=4) {
+	if(argc<=2) {
 		fprintf(stderr,
-                "Usage: udptap_tunnel <localip> <localport> <remotehost> <remoteport>\n"
+                "Usage: tap_mcrypt plaintext_interface destination_mac_address\n"
+                "Example: tap_mcrypt wlan0 ff:ff:ff:ff:ff:ff\n"
                 "    Environment variables:\n"
                 "    TUN_DEVICE  /dev/net/tun\n"
                 "    DEV_NAME    name of the device, default tun%%d\n"
+                "    SOURCE_MAC_ADDRESS -- by default use interface's one\n"
                 "    \n"
                 "    MCRYPT_KEYFILE  -- turn on encryption, read key from this file\n"
                 "    MCRYPT_KEYSIZE  -- key size in bits, default 256\n"
@@ -118,16 +172,15 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-    char* laddr = argv[1];
-    int lport = atoi(argv[2]);
-    char* rhost = argv[3];
-    int rport = atoi(argv[4]);
+    char* interface = argv[1];
+    char* dest_mac = argv[2];
 
 	if((dev = open(tun_device, O_RDWR)) < 0) {
 		fprintf(stderr,"open(%s) failed: %s\n", tun_device, strerror(errno));
 		exit(2);
 	}
 
+    
 #ifndef __NetBSD__
 	memset(&ifr, 0, sizeof(ifr));
 	ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
@@ -136,57 +189,80 @@ int main(int argc, char **argv)
 		perror("ioctl(TUNSETIFF) failed");
 		exit(3);
 	}
+
+    {
+	    struct ifreq ifr_tun;
+	    strncpy(ifr_tun.ifr_name, ifr.ifr_name, IFNAMSIZ);
+        if((sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL)))==-1) {
+            perror("socket() failed");
+            exit(4);
+        }
+        
+        if (ioctl(sock, SIOCGIFFLAGS, &ifr_tun) < 0) { perror("ioctl SIOCGIFFLAGS"); }
+        ifr_tun.ifr_mtu=1408;
+        if(ioctl(sock, SIOCSIFMTU, (void*) &ifr_tun) < 0) {
+            perror("ioctl(SIOCSIFMTU) failed");
+        }
+        
+        close(sock);
+    } 
 #endif
 	
-	if((sock=socket(PF_INET, SOCK_DGRAM, 0))==-1) {
+
+    if((sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL)))==-1) {
 		perror("socket() failed");
 		exit(4);
 	}
 
-	addr.sin_family=AF_INET;
-	addr.sin_port=htons(lport);
-    inet_aton(laddr,&addr.sin_addr);
+    char source_mac[6];
+    int card_index;
+    struct sockaddr_ll device;
 
-	if(bind(sock,(struct sockaddr *)&addr,slen)) {
-		fprintf(stderr,"bind() to port %d failed: %s\n",lport,strerror(errno));
-		exit(5);
-	}
-
-	addr.sin_port=htons(rport);
-	if(!inet_aton(rhost,&addr.sin_addr)) {
-		struct hostent *host;
-		host=gethostbyname2(rhost,AF_INET);
-		if(host==NULL) {
-			fprintf(stderr,"gethostbyname(%s) failed: %s\n",
-				rhost,hstrerror(h_errno));
-			exit(6);
-		}
-		memcpy(&addr.sin_addr,host->h_addr,sizeof(struct in_addr));
-	}
+    memset(&device, 0, sizeof(device));
+    init_MAC_addr(sock, interface, source_mac, &card_index);
+    device.sll_ifindex=card_index;
+    
+    
+    device.sll_family = AF_PACKET;
+    memcpy(device.sll_addr, source_mac, 6);
+    device.sll_halen = htons(6);
+    
+    parseMac(dest_mac, header->ether_dhost);
+    memcpy(header->ether_shost, source_mac, 6);
+    header->ether_type = htons(0x08F4);  
 		
 
 	if(fork())
 		while(1) {
-			cnt=read(dev,(void*)&buf,1518);
+			cnt=read(dev,(void*)buf,1518);
+            //printpacket("sent", buf, cnt);
             if (blocksize) {
                 cnt = ((cnt-1)/blocksize+1)*blocksize; // pad to block size
                 mcrypt_generic (td, buf, cnt);
                 mcrypt_enc_set_state (td, enc_state, enc_state_size);
             }
-			sendto(sock,&buf,cnt,0,(struct sockaddr *)&addr,slen);
+            //printpacket("encr", buf, cnt);
+			sendto(sock, buf_frame, cnt+sizeof(struct ether_header),0,(struct sockaddr *)&device, sizeof device);
 		}
 	else
 		while(1) {
-			cnt=recvfrom(sock,&buf,1536,0,(struct sockaddr *)&from,&slen);
-			if((from.sin_addr.s_addr==addr.sin_addr.s_addr) &&
-			   (from.sin_port==addr.sin_port)) {
-                if (blocksize) {
-                    cnt = ((cnt-1)/blocksize+1)*blocksize; // pad to block size
-                    mdecrypt_generic (td, buf, cnt);
-                    mcrypt_enc_set_state (td, enc_state, enc_state_size);
-                }
-				write(dev,(void*)&buf,cnt);
+            size_t size = sizeof device;
+			cnt=recvfrom(sock,buf_frame,1536,0,(struct sockaddr *)&device,&size);
+            if(device.sll_ifindex != card_index) {
+                continue; /* Not our interface */
             }
+            if(header->ether_type != htons(0x08F4)) {
+                continue; /* Not our protocol type */
+            }
+            cnt-=sizeof(struct ether_header);
+            //printpacket("recv", buf, cnt);
+            if (blocksize) {
+                cnt = ((cnt-1)/blocksize+1)*blocksize; // pad to block size
+                mdecrypt_generic (td, buf, cnt);
+                mcrypt_enc_set_state (td, enc_state, enc_state_size);
+            }
+            //printpacket("decr", buf, cnt);
+            write(dev,(void*)buf,cnt);
 		}
 
     if (blocksize) {
