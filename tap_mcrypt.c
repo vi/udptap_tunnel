@@ -175,6 +175,11 @@ int main(int argc, char **argv)
 
     char* interface = argv[1];
     char* dest_mac = argv[2];
+    int dest_mac_auto = 0;
+    if (!strcmp(dest_mac,"auto")) {
+        dest_mac =  "ff:ff:ff:ff:ff:ff";
+        dest_mac_auto = 1;
+    }
 
 	if((dev = open(tun_device, O_RDWR)) < 0) {
 		fprintf(stderr,"open(%s) failed: %s\n", tun_device, strerror(errno));
