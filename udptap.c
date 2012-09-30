@@ -50,14 +50,30 @@
 
 #include <mcrypt.h>
 
+union sockaddr_4or6 {
+    struct sockaddr_in a4;
+    struct sockaddr_in6 a6;
+    struct sockaddr a;
+};
+
 int main(int argc, char **argv)
 {
-	int dev,cnt,sock,slen=sizeof(struct sockaddr_in);
+    
+    struct addrinfo hints;
+    struct addrinfo *result, *rp;
+        
+    
+    
+
+    
+	int dev,cnt,sock,slen;
 	unsigned char buf[1536];
-	struct sockaddr_in addr,from;
+	union sockaddr_4or6 addr,from;
 #ifndef __NetBSD__
 	struct ifreq ifr;
 #endif
+    
+    
 
     MCRYPT td;
     int i;
@@ -105,7 +121,7 @@ int main(int argc, char **argv)
 
 	if(argc<=4) {
 		fprintf(stderr,
-                "Usage: udptap_tunnel <localip> <localport> <remotehost> <remoteport>\n"
+                "Usage: udptap_tunnel [-6] <localip> <localport> <remotehost> <remoteport>\n"
                 "    Environment variables:\n"
                 "    TUN_DEVICE  /dev/net/tun\n"
                 "    DEV_NAME    name of the device, default tun%%d\n"
@@ -118,10 +134,19 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
+    int ip_family;
+    if (!strcmp(argv[1], "-6")) {
+        ++argv;
+        ip_family = AF_INET6;
+        slen = sizeof(struct sockaddr_in6);
+    } else {
+        ip_family = AF_INET;
+        slen = sizeof(struct sockaddr_in);
+    }
     char* laddr = argv[1];
-    int lport = atoi(argv[2]);
+    char* lport = argv[2];
     char* rhost = argv[3];
-    int rport = atoi(argv[4]);
+    char* rport = argv[4];
 
 	if((dev = open(tun_device, O_RDWR)) < 0) {
 		fprintf(stderr,"open(%s) failed: %s\n", tun_device, strerror(errno));
@@ -138,32 +163,47 @@ int main(int argc, char **argv)
 	}
 #endif
 	
-	if((sock=socket(PF_INET, SOCK_DGRAM, 0))==-1) {
+	if((sock=socket(ip_family, SOCK_DGRAM, 0))==-1) {
 		perror("socket() failed");
 		exit(4);
 	}
-
-	addr.sin_family=AF_INET;
-	addr.sin_port=htons(lport);
-    inet_aton(laddr,&addr.sin_addr);
-
-	if(bind(sock,(struct sockaddr *)&addr,slen)) {
+    
+    memset(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_socktype = SOCK_DGRAM; /* Datagram socket */
+    hints.ai_family = ip_family;
+    
+    if (getaddrinfo(laddr, lport, &hints, &result)) {
+        perror("getaddrinfo for local address");
+        exit(5);
+    }
+    if (result->ai_next) {
+        fprintf(stderr, "getaddrinfo for local returned multiple addresses\n");
+    }
+    if (!result) {
+        fprintf(stderr, "getaddrinfo for remote returned no addresses\n");        
+        exit(6);
+    }
+    memcpy(&addr.a, result->ai_addr, result->ai_addrlen);
+    freeaddrinfo(result);
+    
+	if(bind(sock, (struct sockaddr *)&addr.a, slen)) {
 		fprintf(stderr,"bind() to port %d failed: %s\n",lport,strerror(errno));
 		exit(5);
 	}
-
-	addr.sin_port=htons(rport);
-	if(!inet_aton(rhost,&addr.sin_addr)) {
-		struct hostent *host;
-		host=gethostbyname2(rhost,AF_INET);
-		if(host==NULL) {
-			fprintf(stderr,"gethostbyname(%s) failed: %s\n",
-				rhost,hstrerror(h_errno));
-			exit(6);
-		}
-		memcpy(&addr.sin_addr,host->h_addr,sizeof(struct in_addr));
-	}
-		
+    
+    if (getaddrinfo(rhost, rport, &hints, &result)) {
+        perror("getaddrinfo for local address");
+        exit(5);
+    }
+    if (result->ai_next) {
+        fprintf(stderr, "getaddrinfo for remote returned multiple addresses\n");
+    }
+    if (!result) {
+        fprintf(stderr, "getaddrinfo for remote returned no addresses\n");        
+        exit(6);
+    }
+    memcpy(&addr.a, result->ai_addr, result->ai_addrlen);
+    freeaddrinfo(result);
 
 	if(fork())
 		while(1) {
@@ -173,13 +213,29 @@ int main(int argc, char **argv)
                 mcrypt_generic (td, buf, cnt);
                 mcrypt_enc_set_state (td, enc_state, enc_state_size);
             }
-			sendto(sock,&buf,cnt,0,(struct sockaddr *)&addr,slen);
+			sendto(sock,&buf,cnt,0, &addr.a, slen);
 		}
 	else
 		while(1) {
-			cnt=recvfrom(sock,&buf,1536,0,(struct sockaddr *)&from,&slen);
-			if((from.sin_addr.s_addr==addr.sin_addr.s_addr) &&
-			   (from.sin_port==addr.sin_port)) {
+			cnt=recvfrom(sock,&buf,1536,0, &from.a, &slen);
+            
+            int address_ok = 0;
+            
+            if (ip_family == AF_INET) {
+                if ((from.a4.sin_addr.s_addr==addr.a4.sin_addr.s_addr) && (from.a4.sin_port==addr.a4.sin_port)) {
+                   address_ok = 1; 
+                }
+            } else {
+                if ((!memcmp(
+                        from.a6.sin6_addr.s6_addr,
+                        addr.a6.sin6_addr.s6_addr, 
+                        sizeof(addr.a6.sin6_addr.s6_addr))
+                    ) && (from.a6.sin6_port==addr.a6.sin6_port)) {
+                   address_ok = 1; 
+                }
+            }
+            
+			if (address_ok) {
                 if (blocksize) {
                     cnt = ((cnt-1)/blocksize+1)*blocksize; // pad to block size
                     mdecrypt_generic (td, buf, cnt);
