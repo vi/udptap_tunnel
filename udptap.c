@@ -48,6 +48,8 @@
 #include <stdio.h>
 #include <errno.h>
 
+#include <sys/select.h>
+
 #include <mcrypt.h>
 
 union sockaddr_4or6 {
@@ -205,8 +207,19 @@ int main(int argc, char **argv)
     memcpy(&addr.a, result->ai_addr, result->ai_addrlen);
     freeaddrinfo(result);
 
-	if(fork())
-		while(1) {
+    fcntl(sock, F_SETFL, O_NONBLOCK);
+    fcntl(dev, F_SETFL, O_NONBLOCK);
+    int maxfd = (sock>dev)?sock:dev;
+    for(;;) {
+        fd_set rfds;
+        FD_ZERO(&rfds);
+        FD_SET(sock, &rfds);
+        FD_SET(dev, &rfds);
+        int ret = select(maxfd+1, &rfds, NULL, NULL, NULL);
+        
+        if (ret<0) continue;
+            
+        if (FD_ISSET(dev, &rfds)) {
 			cnt=read(dev,(void*)&buf,1518);
             if (blocksize) {
                 cnt = ((cnt-1)/blocksize+1)*blocksize; // pad to block size
@@ -215,8 +228,8 @@ int main(int argc, char **argv)
             }
 			sendto(sock,&buf,cnt,0, &addr.a, slen);
 		}
-	else
-		while(1) {
+        
+        if (FD_ISSET(sock, &rfds)) {
 			cnt=recvfrom(sock,&buf,1536,0, &from.a, &slen);
             
             int address_ok = 0;
@@ -244,6 +257,7 @@ int main(int argc, char **argv)
 				write(dev,(void*)&buf,cnt);
             }
 		}
+    }
 
     if (blocksize) {
         mcrypt_generic_deinit (td);
