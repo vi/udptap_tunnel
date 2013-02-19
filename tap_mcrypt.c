@@ -124,9 +124,11 @@ int main(int argc, char **argv)
     int enc_state_size;
     char* tun_device = "/dev/net/tun";
     char* dev_name="tun%d";
+    int tuntap_flag = IFF_TAP;
 
     if(getenv("TUN_DEVICE")) { tun_device = getenv("TUN_DEVICE"); }
     if(getenv("DEV_NAME")) { dev_name = getenv("DEV_NAME"); }
+    if(getenv("IFF_TUN")) { tuntap_flag = IFF_TUN; }
 
     if(getenv("MCRYPT_KEYFILE")) {
         if (getenv("MCRYPT_KEYSIZE")) { keysize=atoi(getenv("MCRYPT_KEYSIZE"))/8; }
@@ -166,6 +168,7 @@ int main(int argc, char **argv)
                 "    Environment variables:\n"
                 "    TUN_DEVICE  /dev/net/tun\n"
                 "    DEV_NAME    name of the device, default tun%%d\n"
+                "    IFF_TUN     Use IFF_TUN instead of IFF_TAP\n"
                 "    SOURCE_MAC_ADDRESS -- by default use interface's one\n"
                 "    \n"
                 "    MCRYPT_KEYFILE  -- turn on encryption, read key from this file\n"
@@ -192,7 +195,7 @@ int main(int argc, char **argv)
     
 #ifndef __NetBSD__
 	memset(&ifr, 0, sizeof(ifr));
-	ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
+	ifr.ifr_flags = tuntap_flag | IFF_NO_PI;
 	strncpy(ifr.ifr_name, dev_name, IFNAMSIZ);
 	if(ioctl(dev, TUNSETIFF, (void*) &ifr) < 0) {
 		perror("ioctl(TUNSETIFF) failed");
