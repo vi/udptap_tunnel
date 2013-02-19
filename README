@@ -2,13 +2,14 @@ tap_mcrypt - create TAP device that sends/receives encrypted packets to interfac
 
 It uses EtherType 0x08F4.
 
-Usage: tap_mcrypt plaintext_interface destination_mac_address
-Example: tap_mcrypt wlan0 ff:ff:ff:ff:ff:ff
+Usage: tap_mcrypt plaintext_interface {auto|destination_mac_address}
+Example: tap_mcrypt wlan0 auto
                 (note that ff:ff:ff:ff:ff:ff may work bad in Wi-Fi)
     Environment variables:
     TUN_DEVICE  /dev/net/tun
     DEV_NAME    name of the device, default tun%d
     SOURCE_MAC_ADDRESS -- by default use interface's one
+    IFF_TUN     if set, uses point-to-point instead ot TAP.
     
     MCRYPT_KEYFILE  -- turn on encryption, read key from this file
     MCRYPT_KEYSIZE  -- key size in bits, default 256

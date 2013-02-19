@@ -111,7 +111,7 @@ int main(int argc, char **argv)
 	unsigned char buf_frame[1536+sizeof(struct ether_header)];
     unsigned char *buf = buf_frame+sizeof(struct ether_header);
     struct ether_header header_for_sending;
-    struct ether_header *header_for_receiving = (struct ether_header *)buf;
+    struct ether_header *header_for_receiving = (struct ether_header *)buf_frame;
 #ifndef __NetBSD__
 	struct ifreq ifr;
 #endif
@@ -228,16 +228,17 @@ int main(int argc, char **argv)
 
     char source_mac[6];
     int card_index;
-    struct sockaddr_ll device;
+    struct sockaddr_ll device_send;
+    struct sockaddr_ll device_recv;
 
-    memset(&device, 0, sizeof(device));
+    memset(&device_send, 0, sizeof(device_send));
     init_MAC_addr(sock, interface, source_mac, &card_index);
-    device.sll_ifindex=card_index;
+    device_send.sll_ifindex=card_index;
     
     
-    device.sll_family = AF_PACKET;
-    memcpy(device.sll_addr, source_mac, 6);
-    device.sll_halen = htons(6);
+    device_send.sll_family = AF_PACKET;
+    memcpy(device_send.sll_addr, source_mac, 6);
+    device_send.sll_halen = htons(6);
     
     parseMac(dest_mac, header_for_sending.ether_dhost);
     memcpy(header_for_sending.ether_shost, source_mac, 6);
@@ -257,7 +258,7 @@ int main(int argc, char **argv)
         if (ret<0) continue;
             
         if (FD_ISSET(dev, &rfds)) {
-			cnt=read(dev,(void*)&buf,1518);
+			cnt=read(dev,(void*)buf,1518);
             //printpacket("sent", buf, cnt);
             if (blocksize) {
                 cnt = ((cnt-1)/blocksize+1)*blocksize; // pad to block size
@@ -266,17 +267,38 @@ int main(int argc, char **argv)
             }
             //printpacket("encr", buf, cnt);
             memcpy(buf_frame, &header_for_sending, sizeof header_for_sending);
-			sendto(sock, buf_frame, cnt+sizeof(struct ether_header),0,(struct sockaddr *)&device, sizeof device);
+			sendto(sock, buf_frame, cnt+sizeof(struct ether_header),0,
+                    (struct sockaddr *)&device_send, sizeof device_send);
 		}
         
         if (FD_ISSET(sock, &rfds)) {            
-            size_t size = sizeof device;
-			cnt=recvfrom(sock,buf_frame,1536,0,(struct sockaddr *)&device,&size);
-            if(device.sll_ifindex != card_index) {
+            size_t size = sizeof device_recv;
+			cnt=recvfrom(sock,buf_frame,1536,0,(struct sockaddr *)&device_recv,&size);
+            if(device_recv.sll_ifindex != card_index) {
                 continue; /* Not our interface */
             }
+            //fprintf(stderr, "ethtype=%04X\n", htons(header_for_receiving->ether_type));
             if(header_for_receiving->ether_type != htons(0x08F4)) {
                 continue; /* Not our protocol type */
+            }
+            /*fprintf(stderr, "P %02X%02X%02X -> %02X%02X%02X\n", 
+                    header_for_receiving->ether_shost[0],
+                    header_for_receiving->ether_shost[1],
+                    header_for_receiving->ether_shost[2],
+                    header_for_receiving->ether_dhost[0],
+                    header_for_receiving->ether_dhost[2],
+                    header_for_receiving->ether_dhost[3]);
+            fprintf(stderr, "  S %02X%02X%02X -> %02X%02X%02X\n", 
+                    header_for_sending.ether_shost[0],
+                    header_for_sending.ether_shost[1],
+                    header_for_sending.ether_shost[2],
+                    header_for_sending.ether_dhost[0],
+                    header_for_sending.ether_dhost[2],
+                    header_for_sending.ether_dhost[3]);*/
+            if (!memcmp(header_for_receiving->ether_shost, header_for_sending.ether_shost, 
+                    sizeof header_for_sending.ether_shost)) {
+                fprintf(stderr, "Loop detected\n");
+                continue;
             }
             if (dest_mac_auto) {
                 memcpy(header_for_sending.ether_dhost, header_for_receiving->ether_shost, 
