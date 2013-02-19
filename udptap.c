@@ -121,9 +121,9 @@ int main(int argc, char **argv)
         mcrypt_enc_get_state(td, enc_state, &enc_state_size);
     }
 
-	if(argc<=4) {
+	if(argc<3) {
 		fprintf(stderr,
-                "Usage: udptap_tunnel [-6] <localip> <localport> <remotehost> <remoteport>\n"
+                "Usage: udptap_tunnel [-6] <localip> <localport> [<remotehost> <remoteport>]\n"
                 "    Environment variables:\n"
                 "    TUN_DEVICE  /dev/net/tun\n"
                 "    DEV_NAME    name of the device, default tun%%d\n"
@@ -145,10 +145,16 @@ int main(int argc, char **argv)
         ip_family = AF_INET;
         slen = sizeof(struct sockaddr_in);
     }
+    int autoaddress = 1;
     char* laddr = argv[1];
     char* lport = argv[2];
-    char* rhost = argv[3];
-    char* rport = argv[4];
+    char* rhost = NULL;
+    char* rport = NULL;
+    if (argc == 5) {
+        autoaddress = 0;
+        rhost = argv[3];
+        rport = argv[4];
+    }
 
 	if((dev = open(tun_device, O_RDWR)) < 0) {
 		fprintf(stderr,"open(%s) failed: %s\n", tun_device, strerror(errno));
@@ -186,26 +192,30 @@ int main(int argc, char **argv)
         exit(6);
     }
     memcpy(&addr.a, result->ai_addr, result->ai_addrlen);
-    freeaddrinfo(result);
     
 	if(bind(sock, (struct sockaddr *)&addr.a, slen)) {
 		fprintf(stderr,"bind() to port %d failed: %s\n",lport,strerror(errno));
 		exit(5);
 	}
     
-    if (getaddrinfo(rhost, rport, &hints, &result)) {
-        perror("getaddrinfo for local address");
-        exit(5);
-    }
-    if (result->ai_next) {
-        fprintf(stderr, "getaddrinfo for remote returned multiple addresses\n");
-    }
-    if (!result) {
-        fprintf(stderr, "getaddrinfo for remote returned no addresses\n");        
-        exit(6);
-    }
-    memcpy(&addr.a, result->ai_addr, result->ai_addrlen);
+    memset(&addr.a, 0, result->ai_addrlen);
     freeaddrinfo(result);
+    
+    if (!autoaddress) {
+        if (getaddrinfo(rhost, rport, &hints, &result)) {
+            perror("getaddrinfo for remote address");
+            exit(5);
+        }
+        if (result->ai_next) {
+            fprintf(stderr, "getaddrinfo for remote returned multiple addresses\n");
+        }
+        if (!result) {
+            fprintf(stderr, "getaddrinfo for remote returned no addresses\n");        
+            exit(6);
+        }
+        memcpy(&addr.a, result->ai_addr, result->ai_addrlen);
+        freeaddrinfo(result);
+    }
 
     fcntl(sock, F_SETFL, O_NONBLOCK);
     fcntl(dev, F_SETFL, O_NONBLOCK);
@@ -234,18 +244,23 @@ int main(int argc, char **argv)
             
             int address_ok = 0;
             
-            if (ip_family == AF_INET) {
-                if ((from.a4.sin_addr.s_addr==addr.a4.sin_addr.s_addr) && (from.a4.sin_port==addr.a4.sin_port)) {
-                   address_ok = 1; 
+            if (!autoaddress) {
+                if (ip_family == AF_INET) {
+                    if ((from.a4.sin_addr.s_addr==addr.a4.sin_addr.s_addr) && (from.a4.sin_port==addr.a4.sin_port)) {
+                       address_ok = 1; 
+                    }
+                } else {
+                    if ((!memcmp(
+                            from.a6.sin6_addr.s6_addr,
+                            addr.a6.sin6_addr.s6_addr, 
+                            sizeof(addr.a6.sin6_addr.s6_addr))
+                        ) && (from.a6.sin6_port==addr.a6.sin6_port)) {
+                       address_ok = 1; 
+                    }
                 }
             } else {
-                if ((!memcmp(
-                        from.a6.sin6_addr.s6_addr,
-                        addr.a6.sin6_addr.s6_addr, 
-                        sizeof(addr.a6.sin6_addr.s6_addr))
-                    ) && (from.a6.sin6_port==addr.a6.sin6_port)) {
-                   address_ok = 1; 
-                }
+                memcpy(&addr.a, &from.a, slen);
+                address_ok = 1;
             }
             
 			if (address_ok) {
