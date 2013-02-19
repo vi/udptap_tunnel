@@ -54,6 +54,8 @@
 #include <stdio.h>
 #include <errno.h>
 
+#include <sys/select.h>
+
 #include <mcrypt.h>
 
 void printpacket(const char* msg, const unsigned char* p, size_t len) {
@@ -238,9 +240,20 @@ int main(int argc, char **argv)
     header->ether_type = htons(0x08F4);  
 		
 
-	if(fork())
-		while(1) {
-			cnt=read(dev,(void*)buf,1518);
+    fcntl(sock, F_SETFL, O_NONBLOCK);
+    fcntl(dev, F_SETFL, O_NONBLOCK);
+    int maxfd = (sock>dev)?sock:dev;
+    for(;;) {
+        fd_set rfds;
+        FD_ZERO(&rfds);
+        FD_SET(sock, &rfds);
+        FD_SET(dev, &rfds);
+        int ret = select(maxfd+1, &rfds, NULL, NULL, NULL);
+        
+        if (ret<0) continue;
+            
+        if (FD_ISSET(dev, &rfds)) {
+			cnt=read(dev,(void*)&buf,1518);
             //printpacket("sent", buf, cnt);
             if (blocksize) {
                 cnt = ((cnt-1)/blocksize+1)*blocksize; // pad to block size
@@ -250,8 +263,8 @@ int main(int argc, char **argv)
             //printpacket("encr", buf, cnt);
 			sendto(sock, buf_frame, cnt+sizeof(struct ether_header),0,(struct sockaddr *)&device, sizeof device);
 		}
-	else
-		while(1) {
+        
+        if (FD_ISSET(sock, &rfds)) {            
             size_t size = sizeof device;
 			cnt=recvfrom(sock,buf_frame,1536,0,(struct sockaddr *)&device,&size);
             if(device.sll_ifindex != card_index) {
@@ -270,6 +283,7 @@ int main(int argc, char **argv)
             //printpacket("decr", buf, cnt);
             write(dev,(void*)buf,cnt);
 		}
+    }
 
     if (blocksize) {
         mcrypt_generic_deinit (td);
