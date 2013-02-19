@@ -129,7 +129,7 @@ int main(int argc, char **argv)
                 "    Environment variables:\n"
                 "    TUN_DEVICE  /dev/net/tun\n"
                 "    DEV_NAME    name of the device, default tun%%d\n"
-                "    IFF_TUN     Use IFF_TUN instead of IFF_TAP\n"
+                "    IFF_TUN     if set, uses point-to-point instead ot TAP.\n"
                 "    \n"
                 "    MCRYPT_KEYFILE  -- turn on encryption, read key from this file\n"
                 "    MCRYPT_KEYSIZE  -- key size in bits, default 256\n"
