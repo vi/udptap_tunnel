@@ -110,7 +110,8 @@ int main(int argc, char **argv)
 	int dev,cnt,sock;
 	unsigned char buf_frame[1536+sizeof(struct ether_header)];
     unsigned char *buf = buf_frame+sizeof(struct ether_header);
-    struct ether_header *header = (struct ether_header*) buf_frame;
+    struct ether_header header_for_sending;
+    struct ether_header *header_for_receiving = (struct ether_header *)buf;
 #ifndef __NetBSD__
 	struct ifreq ifr;
 #endif
@@ -159,8 +160,8 @@ int main(int argc, char **argv)
 
 	if(argc<=2) {
 		fprintf(stderr,
-                "Usage: tap_mcrypt plaintext_interface destination_mac_address\n"
-                "Example: tap_mcrypt wlan0 ff:ff:ff:ff:ff:ff\n"
+                "Usage: tap_mcrypt plaintext_interface {auto|destination_mac_address}\n"
+                "Example: tap_mcrypt wlan0 auto\n"
                 "                (note that ff:ff:ff:ff:ff:ff may work bad in Wi-Fi)\n"
                 "    Environment variables:\n"
                 "    TUN_DEVICE  /dev/net/tun\n"
@@ -235,9 +236,9 @@ int main(int argc, char **argv)
     memcpy(device.sll_addr, source_mac, 6);
     device.sll_halen = htons(6);
     
-    parseMac(dest_mac, header->ether_dhost);
-    memcpy(header->ether_shost, source_mac, 6);
-    header->ether_type = htons(0x08F4);  
+    parseMac(dest_mac, header_for_sending.ether_dhost);
+    memcpy(header_for_sending.ether_shost, source_mac, 6);
+    header_for_sending.ether_type = htons(0x08F4);  
 		
 
     fcntl(sock, F_SETFL, O_NONBLOCK);
@@ -261,6 +262,7 @@ int main(int argc, char **argv)
                 mcrypt_enc_set_state (td, enc_state, enc_state_size);
             }
             //printpacket("encr", buf, cnt);
+            memcpy(buf_frame, &header_for_sending, sizeof header_for_sending);
 			sendto(sock, buf_frame, cnt+sizeof(struct ether_header),0,(struct sockaddr *)&device, sizeof device);
 		}
         
@@ -270,8 +272,12 @@ int main(int argc, char **argv)
             if(device.sll_ifindex != card_index) {
                 continue; /* Not our interface */
             }
-            if(header->ether_type != htons(0x08F4)) {
+            if(header_for_receiving->ether_type != htons(0x08F4)) {
                 continue; /* Not our protocol type */
+            }
+            if (dest_mac_auto) {
+                memcpy(header_for_sending.ether_dhost, header_for_receiving->ether_shost, 
+                        sizeof header_for_receiving->ether_shost);
             }
             cnt-=sizeof(struct ether_header);
             //printpacket("recv", buf, cnt);
