@@ -196,6 +196,15 @@ int main(int argc, char **argv)
     }
     memcpy(&addr.a, result->ai_addr, result->ai_addrlen);
     
+    #ifdef IPV6_V6ONLY
+    if (ip_family == AF_INET6) {
+        int s = 0;
+        if(getenv("IPV6_V6ONLY")) s=atoi(getenv("IPV6_V6ONLY"));
+        setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &s, sizeof(int));
+    }
+    #endif //IPV6_V6ONLY
+
+    
 	if(bind(sock, (struct sockaddr *)&addr.a, slen)) {
 		fprintf(stderr,"bind() to port %d failed: %s\n",lport,strerror(errno));
 		exit(5);
