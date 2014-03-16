@@ -135,6 +135,7 @@ int main(int argc, char **argv)
                 "    MCRYPT_KEYSIZE  -- key size in bits, default 256\n"
                 "    MCRYPT_ALGO     -- algorithm, default is twofish. aes256 is called rijndael-256\n"
                 "    MCRYPT_MODE     -- mode, default is CBC\n"
+                "    IPV6_V6ONLY     -- bind socket only to IPv6\n"
                 );
 		exit(1);
 	}
