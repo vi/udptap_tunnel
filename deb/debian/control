@@ -1,0 +1,12 @@
+Source: udptap-tunnel
+Section: utils
+Priority: extra
+Maintainer: Vitaly "_Vi" Shukela <vi0oss@gmail.com>
+Build-Depends: libmcrypt-dev
+Standards-Version: 3.9.3
+Homepage: https://github.com/vi/udptap_tunnel
+
+Package: udptap-tunnel
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libc6, libmcrypt4
+Description: Very simple UDP-based VPN with optional stateless IV-less mcrypt-based encryption.
