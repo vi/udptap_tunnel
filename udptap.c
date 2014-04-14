@@ -188,12 +188,12 @@ int main(int argc, char **argv)
         perror("getaddrinfo for local address");
         exit(5);
     }
-    if (result->ai_next) {
-        fprintf(stderr, "getaddrinfo for local returned multiple addresses\n");
-    }
     if (!result) {
         fprintf(stderr, "getaddrinfo for remote returned no addresses\n");        
         exit(6);
+    }
+    if (result->ai_next) {
+        fprintf(stderr, "getaddrinfo for local returned multiple addresses\n");
     }
     memcpy(&addr.a, result->ai_addr, result->ai_addrlen);
     
