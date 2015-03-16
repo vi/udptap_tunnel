@@ -83,3 +83,17 @@ Primary use case: workaround inability to move wireless connections to other net
     then create veth0/veth1 pair, use vethify to exchange packets between unmanagable wlan0 and manageable veth0
     then move veth1 to your namespace and setup IPv4/IPv6 addresses there
 ```
+
+tap_copy
+---
+```
+Usage: tap_copy interface
+Example: tap_copy eth0
+    Environment variables:
+    TUN_DEVICE  /dev/net/tun
+    DEV_NAME    name of the device, default tun%d
+    SOURCE_MAC_ADDRESS -- by default use interface's one
+    DEBUG=0,1,2 print send and recv packets
+```
+
+I actually don't remember why I needed this one.
