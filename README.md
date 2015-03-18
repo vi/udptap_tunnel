@@ -133,3 +133,25 @@ Examples:
        exchange data between stdin/stdout and AF_UNIX seqpacket socket
 ```
 [1]:http://www.dest-unreach.org/socat/
+
+ipvampire
+---
+
+Sniff the given interface for IPv4 or IPv6 packets belonging to the given subnet and copy them to stdout.
+Inject packets appearing on stdin to the interface back.
+
+Use case: OpenVPN-ing a part of networking out of restrictive VPN (such as OpenVZ without tun/tap enabled).
+
+```
+Usage: ipvampire interface {-6|-4} ip_address/netmask
+Example: ipvampire venet0 -6 2a01:4f8:162:732f:419::acbd/84
+    Environment variables:
+    SOURCE_MAC_ADDRESS1 -- by default use interface's one
+    DEBUG=0,1,2 print send and recv packets
+    
+Implemented by Vitaly "_Vi" Shukela based on Robert M Supnik's code
+Example:
+    ./seqpackettool start -- ./openvpn openvpn --dev stdout --log /dev/stderr -- start -- ./ipvampire ./ipvampire venet0 -6 2a01:4f8:162:732f:419:8000::/88 --
+```
+
+You can find the patched OpenVPN at https://github.com/vi/openvpn/tree/stdout
