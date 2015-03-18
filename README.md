@@ -1,6 +1,8 @@
 udptap_tunnel
 ---
 
+Poor man's OpenVPN.
+
 ```
 Usage: udptap_tunnel [-6] <localip> <localport> <remotehost> <remoteport>
     Environment variables:
