@@ -118,6 +118,8 @@ int main(int argc, char **argv)
                 "    DEBUG=0,1,2 print send and recv packets\n"
                 "    \n"
                 "Implemented by Vitaly \"_Vi\" Shukela based on Robert M Supnik's code\n"
+                "Example:\n"
+                "    ./seqpackettool start -- ./openvpn openvpn --dev stdout --log /dev/stderr -- start -- ./ipvampire ./ipvampire venet0 -6 2a01:4f8:162:732f:419:8000::/88 --\n"
                 );
 		exit(1);
 	}
@@ -192,7 +194,19 @@ int main(int argc, char **argv)
         perror("bind");
     }
 	
-	while(1) {
+    for(;;) {
+        fd_set rfds;
+        int retval;
+        FD_ZERO(&rfds);
+        FD_SET(sock, &rfds);
+        FD_SET(0, &rfds);
+        
+        retval = select(sock+1, &rfds, NULL, NULL, NULL);
+    
+        if (retval==-1) { perror("select"); return 2; }
+        
+        if (FD_ISSET(sock, &rfds)) {
+            
             struct sockaddr_ll device;
             size_t size = sizeof device;
 			cnt=recvfrom(sock,buf_frame,sizeof(buf_frame),0,(struct sockaddr *)&device,&size);
@@ -229,13 +243,29 @@ int main(int argc, char **argv)
                 if (!should_we_handle_this_packet) {
                     if (debug==2) printpacket("_", buf_frame, cnt);
                     if (debug==1) write(2, "_", 1);
-                    continue;
+                } else {
+                    if(debug==2) printpacket("<", buf_frame, cnt);
+			        
+			        int ret;
+                    ret = write(1, buf_frame, cnt);
+                    if (ret != cnt) return 0;
+                    if (debug==1) write(2, "<", 1);
                 }
-                
-                if(debug==2) printpacket("<", buf_frame, cnt);
-			    //sendto(sock, buf_frame, cnt,0,(struct sockaddr *)&device2, sizeof device2);
-                //fwrite(buf_frame, 1, cnt, stdout);
-                if (debug==1) write(2, "<", 1);
-            } 
+            }
+        } // FD_ISSET sock
+        if (FD_ISSET(0, &rfds)) {
+            cnt = read(0, buf_frame, sizeof(buf_frame));
+            if (cnt < 1) return 0;
+            
+            if(debug==2) printpacket(">", buf_frame, cnt);
+            
+            int ret;
+            device1.sll_protocol = htons((proto==AF_INET6) ? ETH_P_IPV6 : ETH_P_IP);
+            ret = sendto(sock, buf_frame, cnt,0,(struct sockaddr *)&device1, sizeof device1);
+            if (ret==-1) perror("sendto");
+            
+            if (debug==1) write(2, ">", 1);
+            
+        }
 	}
 }
