@@ -97,3 +97,37 @@ Example: tap_copy eth0
 ```
 
 I actually don't remember why I needed this one.
+
+
+seqpackettool
+---
+
+[socat][1] seems to lack support of AF_UNIX SOCK_SEQPACKET. So I implemented poor man's socat that allows you to connect and listen AF_UNIX SOCK_SEQPACKET sockets, exchanging data between them and SCTP or started processes. It can also start two processes, mutually (circularly) connected by a seqpacket socket pairt.
+
+```
+Usage: seqpackettool [options] part part
+   part := listen_unix | connect_unix | listen_sctp | connect_sctp | startp | stdiop
+   stdiop := '-' # use fd 0 for recv and fd 1 for send
+   listen_unix := 'unix_listen' addressu
+   connect_unix := 'connect' addressu
+   listen_sctp := 'sctp_listen4' address4 port | 'sctp_listen6' address6 port
+   connect_sctp := 'sctp_connect4' address4 port | 'sctp_connect6' address6 port
+   startp := 'start' '--' full_path_to_program argv0 ... argvN '--'
+   addressu - /path/to/unix/socket or @abstract_socket_address
+   
+   You may use more than two dashes in delimiters to allow '--' inside argv.
+   BUFSIZE environment variable adjusts buffer size
+Options:
+   --listen-once - don't fork, accept only one connection
+   --unidirectional - only recv from first  and send to second part
+   --allow-empty - don't shutdown connection on empty packets
+Examples:
+    seqpackettool sctp4_listen 0.0.0.0 6655 sctp4_listen 127.0.0.1 5566
+       emulate   socat sctp-listen:6655,fork,reuseaddr sctp-listen:5566,reuseaddr,bind=127.0.0.1
+    seqpackettool unix_listen @myprog start -- /usr/bin/my_program my_program arg1 arg2 --
+       for each incoming connection at abstract address 'myprog',
+       start the program and provide the seqpacket socket as stdin/stdout
+    seqpackettool - unix_connect /path/to/socket
+       exchange data between stdin/stdout and AF_UNIX seqpacket socket
+```
+[1]:http://www.dest-unreach.org/socat/
