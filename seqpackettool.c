@@ -4,7 +4,9 @@
 #include <unistd.h>
 #include <sys/select.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <errno.h>
+#include <signal.h>
 
 enum PartType {
     UNIX_LISTEN = 1,
@@ -113,9 +115,74 @@ static void free_part(struct Part *p) {
 }
 
 
+#ifndef UNIX_PATH_MAX
+#define UNIX_PATH_MAX 108
+#endif 
+
 static int init_part_unix(struct Part *p, int listen_once) {
-    fprintf(stderr, "AF_UNIX is not implemented\n");
-    return -1;
+    int sso;
+    struct sockaddr_un sa;
+    int ret;
+    
+    sso = socket(AF_UNIX, SOCK_SEQPACKET, 0);
+    if (sso == -1) { perror("socket"); return -1; }
+    
+    memset(&sa, 0, sizeof sa);
+    sa.sun_family = AF_UNIX;
+        
+    snprintf(sa.sun_path, UNIX_PATH_MAX, "%s", p->arguments[0]);
+    if(sa.sun_path[0]=='@')sa.sun_path[0]=0; // abstract socket address; man 7 unix
+    
+    if (p->type == UNIX_CONNECT) {
+        ret = connect(sso, (struct sockaddr*)&sa, sizeof sa);
+        if (ret==-1) { close(sso); perror("connect"); return -1; }
+        
+        p->fd_send = sso;
+        p->fd_recv = sso;
+        return 0;
+    } else 
+    if (p->type == UNIX_LISTEN) {
+        struct sockaddr_un sa2;
+        socklen_t l = sizeof sa2;
+        int cso;
+        
+        ret = bind(sso, (struct sockaddr*)&sa, sizeof sa);
+        if (ret==-1) { close(sso); perror("bind"); return -1; }
+            
+        if (listen(sso, listen_once?1:16)==-1) { close(sso); perror("listen"); return -1; }
+    
+        if (listen_once) {
+            cso  = accept(sso, (struct sockaddr*)&sa2, &l);
+            
+            if (cso == -1) { close(sso); perror("accept"); return -1; }
+            
+            p->fd_send = cso;
+            p->fd_recv = cso;
+            close(sso);
+            return 0;
+        } else {
+            signal(SIGCHLD, SIG_IGN);
+            for(;;) {
+                cso  = accept(sso, (struct sockaddr*)&sa2,&l);
+                
+                pid_t child = fork();
+                if (child == -1) { close(cso); perror("fork"); usleep(100000); continue; }
+                
+                if (child == 0) {
+                    close(sso);
+                    p->fd_send = cso;
+                    p->fd_recv = cso;
+                    return 0;
+                } else {
+                    close(cso);
+                    // go on accepting other connections
+                }
+            }
+        }
+    } else {
+        fprintf(stderr, "Assertion failed 3\n");
+        return -1;
+    }
 }
 static int init_part_sctp(struct Part *p, int listen_once) {
     fprintf(stderr, "SCTP is not implemented\n");
@@ -200,6 +267,7 @@ static void exchange_data(struct Part* part1, struct Part* part2, char* buffer, 
             if (ret2 == -1 || (ret2 == 0 && lengthtosend != 0)) {
                 if (ret2 == -1 && (errno==EAGAIN || errno==EINTR)) continue;
                 shutdown_direction(part1, part2);
+                return;
             }
             lengthtosend -= ret2;
             bufpoint += ret2;
@@ -227,7 +295,7 @@ int main(int argc, const char* argv[]) {
         fprintf(stderr, "Options:\n");
         fprintf(stderr, "   --listen-once - don't fork, accept only one connection\n");
         fprintf(stderr, "   --unidirectional - only recv from first  and send to second part\n");
-        fprintf(stderr, "   --shutdown-on-zero - interpret zero length packet as a shutdown signal\n");
+        fprintf(stderr, "   --allow-empty - don't shutdown connection on empty packets\n");
         fprintf(stderr, "Examples:\n");
         fprintf(stderr, "    seqpackettool sctp4_listen 0.0.0.0 6655 sctp4_listen 127.0.0.1 5566\n");
         fprintf(stderr, "       emulate   socat sctp-listen:6655,fork,reuseaddr sctp-listen:5566,reuseaddr,bind=127.0.0.1\n");
@@ -252,14 +320,14 @@ int main(int argc, const char* argv[]) {
     int ret;
     
     int unidirectional = 0;
-    int shutdownonzero = 0;
+    int shutdownonzero = 1;
     int listen_once = 0;
     
     ++argv;
     for(;;) {
         if (!strcmp(*argv, "--listen-once")) { listen_once = 1; ++argv; continue; }
         if (!strcmp(*argv, "--unidirectional")) { unidirectional = 1; ++argv; continue; }
-        if (!strcmp(*argv, "--shutdown-on-zero")) { shutdownonzero = 1; ++argv; continue; }
+        if (!strcmp(*argv, "--allow-empty")) { shutdownonzero = 0; ++argv; continue; }
         break;
     }
     
@@ -284,7 +352,7 @@ int main(int argc, const char* argv[]) {
         FD_ZERO(&rfds);
         int max = -1;
         if (part1.fd_recv != -1) { FD_SET(part1.fd_recv, &rfds); if(max<part1.fd_recv) max=part1.fd_recv; }
-        if (part2.fd_recv != -1) { FD_SET(part2.fd_recv, &rfds); if(max<part1.fd_recv) max=part2.fd_recv; }
+        if (part2.fd_recv != -1) { FD_SET(part2.fd_recv, &rfds); if(max<part2.fd_recv) max=part2.fd_recv; }
         
         if (max==-1) break;
         
