@@ -24,8 +24,6 @@ struct Part {
     int fd_send;
 };
 
-static int listen_once = 0;
-
 static int parse_part(const char*** argv_cursor, struct Part *p) {
     const char ***c = argv_cursor;
     if (!**c) {
@@ -89,12 +87,13 @@ static int parse_part(const char*** argv_cursor, struct Part *p) {
             if (!strcmp(*(*c+n), delim)) break;
         }
         if (n==0) { fprintf(stderr, "Empty list of child command line arguments\n"); return -1; }
-        p->arguments = (const char**) malloc(sizeof(const char*) * n);
+        p->arguments = (const char**) malloc(sizeof(const char*) * (n + 1));
         
         int i;
         for (i=0; i<n; ++i) {
             p->arguments[i] = **c; ++*c;
         }
+        p->arguments[n] = NULL;
         ++*c; // skip trailing delimiter
     } else {
         fprintf(stderr, "Assertion failed 1\n");
@@ -114,31 +113,62 @@ static void free_part(struct Part *p) {
 }
 
 
-static int init_part_unix(struct Part *p) {
-    fprintf(stderr, "AF_UNIX not implemented\n");
+static int init_part_unix(struct Part *p, int listen_once) {
+    fprintf(stderr, "AF_UNIX is not implemented\n");
     return -1;
 }
-static int init_part_sctp(struct Part *p) {
-    fprintf(stderr, "SCTP not implemented\n");
+static int init_part_sctp(struct Part *p, int listen_once) {
+    fprintf(stderr, "SCTP is not implemented\n");
     return -1;
 }
-static int init_part_subprocess(struct Part *p) {
-    fprintf(stderr, "Subprocesses not implemented\n");
-    return -1;
+extern char ** environ;
+static int init_part_subprocess(struct Part *p, struct Part *first_part) {
+    int ret;
+    
+    if (first_part) {
+        ret = dup2(first_part->fd_recv, 0); if(ret == -1) { perror("dup2"); return -1; }
+        ret = dup2(first_part->fd_send, 1); if(ret == -1) { perror("dup2"); return -1; }
+        execve(p->arguments[0], (char*const*)p->arguments+1, environ);
+        perror("execve");
+        return -1;
+    }
+    
+    int sv[2];
+    ret = socketpair(AF_UNIX, SOCK_SEQPACKET, 0, sv);
+    
+    if (ret == -1) { perror("socketpair"); return -1; }
+    
+    p->fd_recv = sv[0];
+    p->fd_send = sv[0];
+    
+    pid_t child = fork();
+    if (child == -1) { perror("fork"); return -1; }
+    if (child == 0) {
+        close(sv[0]);
+        ret = dup2(sv[1], 0); if(ret == -1) { perror("dup2"); exit(1); }
+        ret = dup2(sv[1], 1); if(ret == -1) { perror("dup2"); exit(1); }
+        close(sv[1]);
+        execve(p->arguments[0], (char*const*)p->arguments+1, environ);
+        perror("execve");
+        exit(1);
+    }
+    close(sv[1]);
+    
+    return 0;
 }
     
-static int init_part(struct Part *p) {
+static int init_part(struct Part *p, int listen_once, struct Part *first_part) {
     switch(p->type) {
         case UNIX_LISTEN:
         case UNIX_CONNECT:
-            return init_part_unix(p);
+            return init_part_unix(p, listen_once);
         case SCTP4_LISTEN:
         case SCTP4_CONNECT:
         case SCTP6_LISTEN:
         case SCTP6_CONNECT:
-            return init_part_sctp(p);
+            return init_part_sctp(p, listen_once);
         case START:
-            return init_part_subprocess(p);
+            return init_part_subprocess(p, first_part);
         case STDIO:
             p->fd_recv = 0;
             p->fd_send = 1;
@@ -189,8 +219,7 @@ int main(int argc, const char* argv[]) {
         fprintf(stderr, "   connect_unix := 'connect' addressu\n");
         fprintf(stderr, "   listen_sctp := 'sctp_listen4' address4 port | 'sctp_listen6' address6 port\n");
         fprintf(stderr, "   connect_sctp := 'sctp_connect4' address4 port | 'sctp_connect6' address6 port\n");
-        fprintf(stderr, "   startp := 'start' '--' argv '--'\n");
-        fprintf(stderr, "   argv - one or more command line arguments\n");
+        fprintf(stderr, "   startp := 'start' '--' full_path_to_program argv0 ... argvN '--'\n");
         fprintf(stderr, "   addressu - /path/to/unix/socket or @abstract_socket_address\n");
         fprintf(stderr, "   \n");
         fprintf(stderr, "   You may use more than two dashes in delimiters to allow '--' inside argv.\n");
@@ -202,7 +231,7 @@ int main(int argc, const char* argv[]) {
         fprintf(stderr, "Examples:\n");
         fprintf(stderr, "    seqpackettool sctp4_listen 0.0.0.0 6655 sctp4_listen 127.0.0.1 5566\n");
         fprintf(stderr, "       emulate   socat sctp-listen:6655,fork,reuseaddr sctp-listen:5566,reuseaddr,bind=127.0.0.1\n");
-        fprintf(stderr, "    seqpackettool unix_listen @myprog start -- ./my_program arg1 arg2 --\n");
+        fprintf(stderr, "    seqpackettool unix_listen @myprog start -- /usr/bin/my_program my_program arg1 arg2 --\n");
         fprintf(stderr, "       for each incoming connection at abstract address 'myprog',\n");
         fprintf(stderr, "       start the program and provide the seqpacket socket as stdin/stdout\n");
         fprintf(stderr, "    seqpackettool - unix_connect /path/to/socket\n");
@@ -224,6 +253,7 @@ int main(int argc, const char* argv[]) {
     
     int unidirectional = 0;
     int shutdownonzero = 0;
+    int listen_once = 0;
     
     ++argv;
     for(;;) {
@@ -237,8 +267,10 @@ int main(int argc, const char* argv[]) {
     ret = parse_part (&argv, &part2);  if (ret != 0) return 1;
     if (*argv != NULL) { fprintf(stderr, "Extra trailing command line arguments\n"); return 1; }
     
-    ret = init_part (&part1);  if (ret != 0) return 1;
-    ret = init_part (&part2);  if (ret != 0) return 1;
+    ret = init_part (&part1, listen_once, NULL);    if (ret != 0) return 1;
+    // At this point we may have been forked
+    ret = init_part (&part2, 1          , &part1);  if (ret != 0) return 1;
+    // We don't reach this point if part2's type is START
     
     if (unidirectional) {
         shutdown(part2.fd_recv, SHUT_RD);
@@ -264,7 +296,7 @@ int main(int argc, const char* argv[]) {
             exchange_data(&part1, &part2, buffer, bufsize, shutdownonzero);
         }
         if (part2.fd_recv != -1 && FD_ISSET(part2.fd_recv, &rfds)) {
-            exchange_data(&part1, &part2, buffer, bufsize, shutdownonzero);
+            exchange_data(&part2, &part1, buffer, bufsize, shutdownonzero);
         }
         
     }
