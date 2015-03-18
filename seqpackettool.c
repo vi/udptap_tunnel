@@ -9,6 +9,14 @@
 #include <errno.h>
 #include <signal.h>
 
+#ifndef IPPROTO_SCTP
+#define IPPROTO_SCTP 132
+#endif
+
+#ifndef UNIX_PATH_MAX
+#define UNIX_PATH_MAX 104
+#endif 
+
 enum PartType {
     LISTEN = 1,
     CONNECT = 2,
@@ -39,9 +47,6 @@ static void free_part(struct Part *p) {
 }
 
 
-#ifndef UNIX_PATH_MAX
-#define UNIX_PATH_MAX 104
-#endif 
 
 static int init_addr(struct Part *p, struct sockaddr_storage *s, socklen_t *len)
 {
