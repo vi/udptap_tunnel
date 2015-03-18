@@ -193,12 +193,20 @@ int main(int argc, const char* argv[]) {
         fprintf(stderr, "   argv - one or more command line arguments\n");
         fprintf(stderr, "   addressu - /path/to/unix/socket or @abstract_socket_address\n");
         fprintf(stderr, "   \n");
-        fprintf(stderr, "   You may use more than two dashes delimiters to allow '--' inside argv.\n");
+        fprintf(stderr, "   You may use more than two dashes in delimiters to allow '--' inside argv.\n");
         fprintf(stderr, "   BUFSIZE environment variable adjusts buffer size\n");
         fprintf(stderr, "Options:\n");
-        fprintf(stderr, "   --listen-once\n");
+        fprintf(stderr, "   --listen-once - don't fork, accept only one connection\n");
         fprintf(stderr, "   --unidirectional - only recv from first  and send to second part\n");
         fprintf(stderr, "   --shutdown-on-zero - interpret zero length packet as a shutdown signal\n");
+        fprintf(stderr, "Examples:\n");
+        fprintf(stderr, "    seqpackettool sctp4_listen 0.0.0.0 6655 sctp4_listen 127.0.0.1 5566\n");
+        fprintf(stderr, "       emulate   socat sctp-listen:6655,fork,reuseaddr sctp-listen:5566,reuseaddr,bind=127.0.0.1\n");
+        fprintf(stderr, "    seqpackettool unix_listen @myprog start -- ./my_program arg1 arg2 --\n");
+        fprintf(stderr, "       for each incoming connection at abstract address 'myprog',\n");
+        fprintf(stderr, "       start the program and provide the seqpacket socket as stdin/stdout\n");
+        fprintf(stderr, "    seqpackettool - unix_connect /path/to/socket\n");
+        fprintf(stderr, "       exchange data between stdin/stdout and AF_UNIX seqpacket socket\n");
         
         return 1;
     }
