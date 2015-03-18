@@ -2,6 +2,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <errno.h>
 
 enum PartType {
     UNIX_LISTEN = 1,
@@ -17,8 +20,11 @@ enum PartType {
 struct Part {
     enum PartType type;
     const char** arguments;
-    int fd;
+    int fd_recv;
+    int fd_send;
 };
+
+static int listen_once = 0;
 
 static int parse_part(const char*** argv_cursor, struct Part *p) {
     const char ***c = argv_cursor;
@@ -58,6 +64,8 @@ static int parse_part(const char*** argv_cursor, struct Part *p) {
     ++*c;
     
     p->type = t;
+    p->fd_recv = -1;
+    p->fd_send = -1;
     
     if      (t==STDIO) { p->arguments = NULL; }
     else if (t==UNIX_LISTEN || t==UNIX_CONNECT) {
@@ -96,14 +104,85 @@ static int parse_part(const char*** argv_cursor, struct Part *p) {
 }
 
 static void free_part(struct Part *p) {
-    close(p->fd);    
+    if (p->fd_recv == p->fd_send) {
+        close(p->fd_recv);
+    } else {
+        close(p->fd_send);
+        close(p->fd_recv);
+    }
     free(p->arguments);
 }
+
+
+static int init_part_unix(struct Part *p) {
+    fprintf(stderr, "AF_UNIX not implemented\n");
+    return -1;
+}
+static int init_part_sctp(struct Part *p) {
+    fprintf(stderr, "SCTP not implemented\n");
+    return -1;
+}
+static int init_part_subprocess(struct Part *p) {
+    fprintf(stderr, "Subprocesses not implemented\n");
+    return -1;
+}
     
+static int init_part(struct Part *p) {
+    switch(p->type) {
+        case UNIX_LISTEN:
+        case UNIX_CONNECT:
+            return init_part_unix(p);
+        case SCTP4_LISTEN:
+        case SCTP4_CONNECT:
+        case SCTP6_LISTEN:
+        case SCTP6_CONNECT:
+            return init_part_sctp(p);
+        case START:
+            return init_part_subprocess(p);
+        case STDIO:
+            p->fd_recv = 0;
+            p->fd_send = 1;
+            return 0;
+        default:
+            fprintf(stderr, "Assertion failed 2\n");
+            return -1;
+    }
+}
+    
+static void shutdown_direction(struct Part* part1, struct Part* part2) {
+    shutdown(part1->fd_recv, SHUT_RD);
+    shutdown(part2->fd_send, SHUT_WR);
+    part1->fd_recv = -1;
+}
+
+static void exchange_data(struct Part* part1, struct Part* part2, char* buffer, size_t bufsize, int shutdownonzero) {
+    int ret;
+    ret = read(part1->fd_recv, buffer, bufsize);
+    if (ret == -1) {
+        if (errno==EAGAIN || errno==EINTR) return;
+        shutdown_direction(part1, part2);
+    } else {
+        int lengthtosend = ret;
+        const char* bufpoint = buffer;
+        do {
+            int ret2;
+            ret2 = write(part2->fd_send, bufpoint, lengthtosend);
+            if (ret2 == -1 || (ret2 == 0 && lengthtosend != 0)) {
+                if (ret2 == -1 && (errno==EAGAIN || errno==EINTR)) continue;
+                shutdown_direction(part1, part2);
+            }
+            lengthtosend -= ret2;
+            bufpoint += ret2;
+        } while (lengthtosend>0);
+        if (shutdownonzero && ret == 0) {
+            shutdown_direction(part1, part2);
+        }
+    }
+}
     
 int main(int argc, const char* argv[]) {
     if (argc==1 || !strcmp(argv[1], "--help")) {
-        fprintf(stderr, "Usage: seqpackettool [--listen-once] part part\n");
+        fprintf(stderr, "Usage: seqpackettool [options] part part\n");
         fprintf(stderr, "   part := listen_unix | connect_unix | listen_sctp | connect_sctp | startp | stdiop\n");
         fprintf(stderr, "   stdiop := '-' # use fd 0 for recv and fd 1 for send\n");
         fprintf(stderr, "   listen_unix := 'unix_listen' addressu\n");
@@ -113,22 +192,74 @@ int main(int argc, const char* argv[]) {
         fprintf(stderr, "   startp := 'start' '--' argv '--'\n");
         fprintf(stderr, "   argv - one or more command line arguments\n");
         fprintf(stderr, "   addressu - /path/to/unix/socket or @abstract_socket_address\n");
+        fprintf(stderr, "   \n");
         fprintf(stderr, "   You may use more than two dashes delimiters to allow '--' inside argv.\n");
+        fprintf(stderr, "   BUFSIZE environment variable adjusts buffer size\n");
+        fprintf(stderr, "Options:\n");
+        fprintf(stderr, "   --listen-once\n");
+        fprintf(stderr, "   --unidirectional - only recv from first  and send to second part\n");
+        fprintf(stderr, "   --shutdown-on-zero - interpret zero length packet as a shutdown signal\n");
         
         return 1;
     }
+    
+    size_t bufsize = 65536;
+    if (getenv("BUFSIZE")) bufsize = atoi(getenv("BUFSIZE"));
+    
+    char *buffer;
+    buffer =  (char*) malloc(bufsize);
+    if (!buffer) { perror("malloc"); return 3; }
     
     struct Part part1, part2;
 
     int ret;
     
-    ++argv;
-    ret = parse_part (&argv, &part1);
-    if (ret != 0) return 1;
-    ret = parse_part (&argv, &part2);
-    if (ret != 0) return 1;
+    int unidirectional = 0;
+    int shutdownonzero = 0;
     
+    ++argv;
+    for(;;) {
+        if (!strcmp(*argv, "--listen-once")) { listen_once = 1; ++argv; continue; }
+        if (!strcmp(*argv, "--unidirectional")) { unidirectional = 1; ++argv; continue; }
+        if (!strcmp(*argv, "--shutdown-on-zero")) { shutdownonzero = 1; ++argv; continue; }
+        break;
+    }
+    
+    ret = parse_part (&argv, &part1);  if (ret != 0) return 1;
+    ret = parse_part (&argv, &part2);  if (ret != 0) return 1;
     if (*argv != NULL) { fprintf(stderr, "Extra trailing command line arguments\n"); return 1; }
+    
+    ret = init_part (&part1);  if (ret != 0) return 1;
+    ret = init_part (&part2);  if (ret != 0) return 1;
+    
+    if (unidirectional) {
+        shutdown(part2.fd_recv, SHUT_RD);
+        shutdown(part1.fd_send, SHUT_WR);
+        part2.fd_recv = -1;
+    }
+    
+    for(;;) {
+        fd_set rfds;
+        int retval;
+        FD_ZERO(&rfds);
+        int max = -1;
+        if (part1.fd_recv != -1) { FD_SET(part1.fd_recv, &rfds); if(max<part1.fd_recv) max=part1.fd_recv; }
+        if (part2.fd_recv != -1) { FD_SET(part2.fd_recv, &rfds); if(max<part1.fd_recv) max=part2.fd_recv; }
+        
+        if (max==-1) break;
+        
+        retval = select(max+1, &rfds, NULL, NULL, NULL);
+        
+        if (retval==-1) { perror("select"); return 2; }
+        
+        if (part1.fd_recv != -1 && FD_ISSET(part1.fd_recv, &rfds)) {
+            exchange_data(&part1, &part2, buffer, bufsize, shutdownonzero);
+        }
+        if (part2.fd_recv != -1 && FD_ISSET(part2.fd_recv, &rfds)) {
+            exchange_data(&part1, &part2, buffer, bufsize, shutdownonzero);
+        }
+        
+    }
     
     free_part(&part1);
     free_part(&part2);
