@@ -2,6 +2,8 @@ all: \
 	tap_mcrypt \
 	tap_copy \
 	vethify \
+	ipvampire \
+	seqpackettool \
 	udptap_tunnel
 
 udptap_tunnel: udptap.c
@@ -15,3 +17,9 @@ tap_copy: tap_copy.c
 		
 vethify: vethify.c
 		${CC} ${CFLAGS} -Wall vethify.c ${LDFLAGS} -o vethify
+		
+ipvampire: ipvampire.c
+		${CC} ${CFLAGS} -ggdb -Wall ipvampire.c ${LDFLAGS} -o ipvampire
+		
+seqpackettool: seqpackettool.c
+		${CC} ${CFLAGS} -ggdb -Wall seqpackettool.c ${LDFLAGS} -o seqpackettool
