@@ -4,6 +4,7 @@ all: \
 	vethify \
 	ipvampire \
 	seqpackettool \
+	udpjump \
 	udptap_tunnel
 
 udptap_tunnel: udptap.c
@@ -23,3 +24,6 @@ ipvampire: ipvampire.c
 		
 seqpackettool: seqpackettool.c
 		${CC} ${CFLAGS} -ggdb -Wall seqpackettool.c ${LDFLAGS} -o seqpackettool
+		
+udpjump: udpjump.c
+		${CC} ${CFLAGS} -ggdb -Wall udpjump.c ${LDFLAGS} -o udpjump
