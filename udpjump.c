@@ -35,7 +35,7 @@ int main(int argc, char* argv[])
           "   MINISESSION_TIMEOUT_MS=3000 (milliseconds)\n"
           "Example:\n"
           "on server: udpjump connect 127.0.0.1 1194 listen 0.0.0.0 {4000.4039}\n"
-          "on client: udpjump listen  127.0.0.1 1195 connect example.com {4000.4039}\n"
+          "on client: udpjump listen  127.0.0.1 1195 connect 1.2.3.4 {4000.4039}\n"
         );
         return 8;
     }

@@ -155,3 +155,19 @@ Example:
 ```
 
 You can find the patched OpenVPN at https://github.com/vi/openvpn/tree/stdout
+
+
+udpjump
+---
+
+Allow OpenVPN to jump from UDP socket to UDP socket, avoiding long-lived associations.
+A workaround against problems in a particular network.
+
+```
+Usage: udpjump {listen|connect|listen6|connect6} address post {listen|connect|listen6|connect6} multiport_address multiport_port1 multiport_port2 ... multiport_portN
+Environment variables:
+   MINISESSION_TIMEOUT_MS=3000 (milliseconds)
+Example:
+on server: udpjump connect 127.0.0.1 1194 listen 0.0.0.0 {4000.4039}
+on client: udpjump listen  127.0.0.1 1195 connect 1.2.3.4 {4000.4039}
+```
