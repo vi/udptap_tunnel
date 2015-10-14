@@ -8,6 +8,7 @@ all: \
 	udpnat \
 	libmapopentounixsocket.so \
 	socketpair_dispenser \
+	buffered_pipeline \
 	udptap_tunnel
 
 udptap_tunnel: udptap.c
@@ -39,3 +40,6 @@ socketpair_dispenser: socketpair_dispenser.c
 		
 libmapopentounixsocket.so: mapopentounixsocket.c
 		${CC} ${CFLAGS} -ggdb -Wall mapopentounixsocket.c -fPIC -ldl -shared -o libmapopentounixsocket.so
+		
+buffered_pipeline: buffered_pipeline.c
+		${CC} ${CFLAGS} -ggdb -Wall buffered_pipeline.c ${LDFLAGS} -o buffered_pipeline

@@ -191,3 +191,17 @@ $ LD_PRELOAD=libmapopentounixsocket.so MAPOPENTOUNIXSOCKET=/tmp/123 sink /tmp/so
 ```
 
 The source can start filling the 50-megabyte buffer even before sink is started.
+
+
+buffered_pipeline
+---
+
+Like Shell's pipeline, but with AF_UNIX socketpair instead of pipe2's FIFO, with adjustable buffer size.
+
+
+```
+$ ./buffered_pipeline ! pv -i 10 -c -N 1 /dev/zero ! $((20*1000*1000)) ! pv -i 10 -L 100k -c -N 2 ! > /dev/zero
+        1: 13.4MB 0:00:40 [ 103kB/s] [         <=>          ]
+        2: 3.91MB 0:00:40 [ 100kB/s] [         <=>          ]
+
+```
