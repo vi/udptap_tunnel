@@ -181,7 +181,7 @@ Sometimes usual pipelines are not enough.
 source | sink
 ```
 
-For example, you may want to pre-buffer some content, then start the sink. Or you may want to start the sink later.
+For example, you may want to pre-buffer some content, then start the sink. Sink may be started later and independently of source.
 
 ```
 # echo 100000000 >  /proc/sys/net/core/wmem_max
