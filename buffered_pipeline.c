@@ -10,7 +10,7 @@ int main (int argc, char* argv[])
     if (argc < 5 || !strcmp(argv[1], "--help")) {
         fprintf(stderr, "buffered_pipeline - like shell's pipeline, but with AF_UNIX sockets with adjustable buffer size\n");
         fprintf(stderr, "Usage:\n buffered_pipeline delimiter1 argv1_0 argv1_1 ... argv1_N delimiter1 buffer_size1 delimiter2 argv2_0 ... argv2_M delimiter2 buffer_size_2 ... delimiterK\n");
-        fprintf(stderr, "Example:\n buffered_pipeline ! ffmpeg -i rtsp://... -c copy -f nut - ! 1000000  ! ffmpeg -f nut -i - -c:v rawvideo -f nut - ! 50000000 ! mplayer --cache 1024 - !\n");
+        fprintf(stderr, "Example:\n buffered_pipeline ! ffmpeg -i rtsp://... -c copy -f nut - ! 1000000  ! ffmpeg -f nut -i - -c:v rawvideo -f nut - ! 50000000 ! mplayer -cache 1024 - !\n");
         return 1;
     }
     
