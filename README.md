@@ -171,3 +171,23 @@ Example:
 on server: udpjump connect 127.0.0.1 1194 listen 0.0.0.0 {4000.4039}
 on client: udpjump listen  127.0.0.1 1195 connect 1.2.3.4 {4000.4039}
 ```
+
+mapopentounixsocket
+---
+
+Sometimes usual pipelines are not enough. 
+
+```
+source | sink
+```
+
+For example, you may want to pre-buffer some content, then start the sink. Or you may want to start the sink later.
+
+```
+# echo 100000000 >  /proc/sys/net/core/wmem_max
+$ socketpair_dispenser $((1000*1000*50)) /tmp/123
+$ LD_PRELOAD=libmapopentounixsocket.so MAPOPENTOUNIXSOCKET=/tmp/123 sh -c 'source > /tmp/somefile.sock'
+$ LD_PRELOAD=libmapopentounixsocket.so MAPOPENTOUNIXSOCKET=/tmp/123 sink /tmp/somefile.sock
+```
+
+The source can start filling the 50-megabyte buffer even before sink is started.

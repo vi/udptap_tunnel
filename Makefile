@@ -5,6 +5,9 @@ all: \
 	ipvampire \
 	seqpackettool \
 	udpjump \
+	udpnat \
+	libmapopentounixsocket.so \
+	socketpair_dispenser \
 	udptap_tunnel
 
 udptap_tunnel: udptap.c
@@ -27,3 +30,12 @@ seqpackettool: seqpackettool.c
 		
 udpjump: udpjump.c
 		${CC} ${CFLAGS} -ggdb -Wall udpjump.c ${LDFLAGS} -o udpjump
+		
+udpnat: udpnat.c
+		${CC} ${CFLAGS} -ggdb -Wall udpnat.c ${LDFLAGS} -o udpnat
+		
+socketpair_dispenser: socketpair_dispenser.c
+		${CC} ${CFLAGS} -ggdb -Wall socketpair_dispenser.c ${LDFLAGS} -o socketpair_dispenser
+		
+libmapopentounixsocket.so: mapopentounixsocket.c
+		${CC} ${CFLAGS} -ggdb -Wall mapopentounixsocket.c -fPIC -ldl -shared -o libmapopentounixsocket.so
