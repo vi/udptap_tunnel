@@ -9,6 +9,7 @@ all: \
 	libmapopentounixsocket.so \
 	socketpair_dispenser \
 	buffered_pipeline \
+	udpcast \
 	udptap_tunnel
 
 udptap_tunnel: udptap.c
@@ -43,3 +44,6 @@ libmapopentounixsocket.so: mapopentounixsocket.c
 		
 buffered_pipeline: buffered_pipeline.c
 		${CC} ${CFLAGS} -ggdb -Wall buffered_pipeline.c ${LDFLAGS} -o buffered_pipeline
+		
+udpcast: udpcast.c
+		${CC} ${CFLAGS} -ggdb -Wall udpcast.c ${LDFLAGS} -o udpcast
