@@ -10,12 +10,12 @@
 #undef NDEBUG
 #include <assert.h>
 
-#define MAXCLIENTS 32
+#define MAXCLIENTS 64
 #define MAXPORTS 16
 #define BUFSIZE 4096
 
 struct Client {
-    struct sockaddr_storage addr[MAXPORTS];
+    struct sockaddr_storage addr;
 };
 
 enum Family {
@@ -115,10 +115,10 @@ int main(int argc, char* argv[]) {
                 
                 int client_number = -1;
                 j_for_all_clients {
-                    if (!memcmp(&clients[j].addr[i], &from, addrsize)) {
+                    if (!memcmp(&clients[j].addr, &from, addrsize)) {
                         client_number = j;
                     } else {
-                        sendto(sockets[i], buffer, ret, 0, (struct sockaddr*) &clients[j].addr[i], addrsize);
+                        sendto(sockets[i], buffer, ret, 0, (struct sockaddr*) &clients[j].addr, addrsize);
                     }
                 }
                 
@@ -126,7 +126,7 @@ int main(int argc, char* argv[]) {
                     if (clientcount < MAXCLIENTS) {
                         ++clientcount;
                         client_number = clientcount - 1;
-                        memcpy(&clients[client_number].addr[i], &from, addrsize);
+                        memcpy(&clients[client_number].addr, &from, addrsize);
                     } else {
                         fprintf(stderr, "Client overflow\n");
                     }
@@ -135,7 +135,7 @@ int main(int argc, char* argv[]) {
                 {
                     char diagnostic_message[2];
                     diagnostic_message[0] = "ABCDEFGHIJKLMNOP"[i];
-                    diagnostic_message[1] = "_0123456789abcdefghijklnmopqrstuv"[client_number+1];
+                    diagnostic_message[1] = "_0123456789abcdefghijklnmopqrstuvwxyz......................................................................."[client_number+1];
                     write(1, diagnostic_message, 2);
                 }
             }
