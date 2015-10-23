@@ -1,10 +1,24 @@
 #include <stdio.h>
-#include <sys/socket.h>
 #include <sys/types.h>
+
+#ifndef WIN32
+
+#include <sys/socket.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <string.h>
 #include <netdb.h>
+
+#else
+
+#define WINVER 0x0501
+#include <winsock2.h>
+#include <windows.h>
+#include <ws2tcpip.h>
+#include <fcntl.h>
+
+#endif
+
 #include <errno.h>
 
 #undef NDEBUG
@@ -29,6 +43,17 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, " Send received packets on specified ports to all other seen clients\n");
         return 1;
     }
+    
+    #ifdef WIN32
+        WSADATA wsaData;
+        int iResult = WSAStartup( MAKEWORD(2,2), &wsaData );
+        if ( iResult != NO_ERROR ) {
+            fprintf(stderr,"Error at WSAStartup()\n");
+            exit(1);
+        }
+        _setmode(_fileno(stdin), _O_BINARY);
+    #endif
+
     
     const char* family_ = argv[1];
     const char* bindaddr = argv[2];
